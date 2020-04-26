@@ -7,6 +7,7 @@ import {
   switchMap,
   takeUntil,
   takeWhile,
+  pairwise,
 } from 'rxjs/operators';
 import { SocketIOService } from '../socketio.service';
 
@@ -16,11 +17,11 @@ import { SocketIOService } from '../socketio.service';
   styleUrls: ['./canvas.component.scss'],
 })
 export class CanvasComponent implements OnInit, OnDestroy {
-  readonly limit = 50;
+  readonly limit = 2550;
   readonly lineCap = 'round';
   readonly maxWidth = 1024;
   readonly maxHeight = 768;
-  readonly scale = window.devicePixelRatio;
+  // readonly scale = window.devicePixelRatio;
   readonly tmpCanvasName = 'tmp_canvas';
   lineWidth = 5;
 
@@ -97,15 +98,34 @@ export class CanvasComponent implements OnInit, OnDestroy {
             y: e.touches ? e.touches[0].pageY : e.offsetY,
           })),
           takeUntil(mouseUp),
-          takeUntil(mouseOut)
+          takeUntil(mouseOut),
+          pairwise(),
+          map((e: [MouseEvent, MouseEvent]) => (this.updateCoordinates(e))),
         );
       })
     );
   }
-
-  initBuffer(limitOfCount: Subject<boolean>, mouseUp) {
-    return new Subject()
-    .pipe(
+  updateCoordinates(res) {
+    const rect = this.tmpCanvas.getBoundingClientRect();
+    const prevPos = {
+      x: res[0].clientX - rect.left,
+      y: res[0].clientY - rect.top
+    };
+    const currentPos = {
+      x: res[1].clientX - rect.left,
+      y: res[1].clientY - rect.top
+    };
+    return {
+      prevPos,
+      currentPos
+    };
+    // {
+    //   x: e.touches ? e.touches[0].pageX : e.offsetX,
+    //     y: e.touches ? e.touches[0].pageY : e.offsetY,
+    // }
+  }
+  initBuffer(limitOfCount, mouseUp) {
+    return new Subject().pipe(
       bufferWhen(() => merge(limitOfCount, mouseUp)),
       takeWhile(() => this.isComponentPresent)
     ) as Subject<Coordinate[]>;
@@ -156,36 +176,17 @@ export class CanvasComponent implements OnInit, OnDestroy {
       dataBuffer.next(res);
     });
   }
-
-  drawMe(context, canvas, points, emitted = false) {
-    if (!this.checkPointsArray(context, points.length, points[0])) {
-      this.clearCanvas(context, canvas); // TODO implicit return.
-      context.beginPath();
-      context.moveTo(points[0].x, points[0].y);
-      let i = 0;
-      for (i = 1; i < points.length - 2; i++) {
-        const c = (points[i].x + points[i + 1].x) / 2;
-        const d = (points[i].y + points[i + 1].y) / 2;
-        context.quadraticCurveTo(points[i].x, points[i].y, c, d);
-      }
-      context.quadraticCurveTo(
-        points[i].x,
-        points[i].y,
-        points[i + 1].x,
-        points[i + 1].y
-      );
+  drawMe(context, canvas, points, realContext = false) {
+    context.beginPath();
+    if (points.prevPos) {
+      context.moveTo(points.prevPos.x, points.prevPos.y);
+      context.lineTo(points.currentPos.x, points.currentPos.y);
       context.stroke();
     }
-  }
-  checkPointsArray(context, size, point) {
-    if (size < 3) {
-      context.beginPath();
-      context.arc(point.x, point.y, context.lineWidth / 2, 0, Math.PI * 2, !0);
-      context.fill();
+    if (realContext) {
       context.closePath();
-      return true;
+      return this.clearCanvas(context, canvas, realContext);
     }
-    return false;
   }
   clearCanvas(context, canvas, realContext = null) {
     if (realContext !== null) {
