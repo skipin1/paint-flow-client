@@ -1,16 +1,20 @@
-import * as io from 'socket.io-client';
 import { Injectable } from '@angular/core';
+import { Socket } from 'ngx-socket-io';
 
+export interface Coordinate {
+  x: number;
+  y: number;
+}
 @Injectable({
   providedIn: 'root'
 })
-export class SocketioService {
-  private url = 'http://localhost:5000';
-  socket;
-  constructor() {
-    this.setupSocketConnection();
-  }
-  setupSocketConnection() {
-    this.socket = io(this.url);
+export class SocketIOService {
+
+  public data$ = this.socket.fromEvent<{data: Coordinate[]}>('drawing');
+
+  constructor(private socket: Socket) {}
+
+  sendData(data: Coordinate[]): void {
+    this.socket.emit('drawing', {data});
   }
 }
