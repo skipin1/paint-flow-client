@@ -5,16 +5,21 @@ export interface Coordinate {
   x: number;
   y: number;
 }
+
+export interface Point {
+  prevPos: Coordinate;
+  currentPos: Coordinate;
+}
 @Injectable({
   providedIn: 'root'
 })
 export class SocketIOService {
 
-  public data$ = this.socket.fromEvent<{data: Coordinate[]}>('drawing');
+  public data$ = this.socket.fromEvent<{data: Point}>('drawing');
 
   constructor(private socket: Socket) {}
 
-  sendData(data: Coordinate[]): void {
+  sendData(data: Point): void {
     this.socket.emit('drawing', {data});
   }
 }

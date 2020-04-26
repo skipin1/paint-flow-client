@@ -1,4 +1,4 @@
-import { Coordinate } from './../socketio.service';
+import { Coordinate, Point } from './../socketio.service';
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { fromEvent, merge, Subject } from 'rxjs';
 import {
@@ -17,7 +17,7 @@ import { SocketIOService } from '../socketio.service';
   styleUrls: ['./canvas.component.scss'],
 })
 export class CanvasComponent implements OnInit, OnDestroy {
-  readonly limit = 2550;
+  readonly limit = 50;
   readonly lineCap = 'round';
   readonly maxWidth = 1024;
   readonly maxHeight = 768;
@@ -38,11 +38,10 @@ export class CanvasComponent implements OnInit, OnDestroy {
       takeWhile(() => this.isComponentPresent)
     )
     .subscribe(({data}) => {
-      // console.log('Get data is', data);
-      if (data.length === 0) { return; }
-      this.drawMe(this.tmpCtx, this.tmpCanvas, data, true);
-      this.ctx.drawImage(this.tmpCanvas, 0, 0);
-      this.tmpCtx.clearRect(0, 0, this.tmpCanvas.width, this.tmpCanvas.height);
+       if (!data) { return; }
+       this.drawMe(this.tmpCtx, this.tmpCanvas, data, true);
+       this.ctx.drawImage(this.tmpCanvas, 0, 0);
+       this.tmpCtx.clearRect(0, 0, this.tmpCanvas.width, this.tmpCanvas.height);
     });
   }
 
@@ -68,7 +67,7 @@ export class CanvasComponent implements OnInit, OnDestroy {
     this.tmpCtx.lineJoin = this.tmpCtx.lineCap = this.lineCap;
     this.tmpCtx.lineWidth = this.lineWidth;
     sketch.appendChild(this.tmpCanvas);
-    this.initMouseEvents(this.tmpCtx, this.tmpCanvas, this.ctx);
+    this.initMouseEvents(this.tmpCtx, this.tmpCanvas, true);
   }
 
   ngOnDestroy(): void {
@@ -93,19 +92,15 @@ export class CanvasComponent implements OnInit, OnDestroy {
     return mouseDown.pipe(
       switchMap(() => {
         return mouseMove.pipe(
-          map((e: any) => ({
-            x: e.touches ? e.touches[0].pageX : e.offsetX,
-            y: e.touches ? e.touches[0].pageY : e.offsetY,
-          })),
+          pairwise(),
+          map((e: MouseEvent[]) => (this.updateCoordinates(e))),
           takeUntil(mouseUp),
           takeUntil(mouseOut),
-          pairwise(),
-          map((e: [MouseEvent, MouseEvent]) => (this.updateCoordinates(e))),
         );
       })
     );
   }
-  updateCoordinates(res) {
+  updateCoordinates(res: MouseEvent[]) {
     const rect = this.tmpCanvas.getBoundingClientRect();
     const prevPos = {
       x: res[0].clientX - rect.left,
@@ -140,7 +135,7 @@ export class CanvasComponent implements OnInit, OnDestroy {
     const mouseUp = fromEvent(canvas, 'mouseup');
     const touchEnd = fromEvent(canvas, 'touchend');
     const mouseOut = fromEvent(canvas, 'mouseout');
-    const touchOut = fromEvent(canvas, 'touchout');
+    // const touchOut = fromEvent(canvas, 'touchout');
     const mergeEventsStart = merge(mouseDown, touchDown);
     const mergeEventsMove = merge(mouseMove, touchMove);
     const mergeEventsUp = merge(mouseUp, touchEnd);
@@ -155,28 +150,28 @@ export class CanvasComponent implements OnInit, OnDestroy {
     const dataBuffer = this.initBuffer(limitOfCount, mergeEventsUp);
     dataBuffer.pipe(
       takeWhile(() => this.isComponentPresent)
-    ).subscribe((coordArr: Coordinate[]) => {
-      this.socketService.sendData(coordArr);
-      // points = this.clearCanvas(context, canvas, realContext);
+    ).subscribe(() => {
+      // this.socketService.sendData(coordArr);
+      points = this.clearCanvas(context, canvas, true);
     });
 
     mouseUp.pipe(
       takeWhile(() => this.isComponentPresent)
-    ).subscribe(() => points = this.clearCanvas(context, canvas, realContext));
+    ).subscribe(() => points = this.clearCanvas(context, canvas, true));
 
     stream.pipe(
       takeWhile(() => this.isComponentPresent)
-    ).subscribe((res) => {
-      points.push(res);
+    ).subscribe((point: Point) => {
+      points.push(point);
       if (points.length % this.limit === 0) {
         limitOfCount.next(true);
       }
-      // console.log('Points is', points);
-      this.drawMe(context, canvas, points);
-      dataBuffer.next(res);
+      this.drawMe(context, canvas, point);
+      this.socketService.sendData(point);
+      // dataBuffer.next(coordArr);
     });
   }
-  drawMe(context, canvas, points, realContext = false) {
+  drawMe(context, canvas, points, realContext: boolean = false) {
     context.beginPath();
     if (points.prevPos) {
       context.moveTo(points.prevPos.x, points.prevPos.y);
@@ -188,9 +183,10 @@ export class CanvasComponent implements OnInit, OnDestroy {
       return this.clearCanvas(context, canvas, realContext);
     }
   }
-  clearCanvas(context, canvas, realContext = null) {
-    if (realContext !== null) {
-      realContext.drawImage(canvas, 0, 0);
+  clearCanvas(context, canvas, realContext: boolean = false) {
+
+    if (realContext) {
+      this.ctx.drawImage(canvas, 0, 0);
     }
     context.clearRect(0, 0, canvas.width, canvas.height);
     return [];
